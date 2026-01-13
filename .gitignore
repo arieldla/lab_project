@@ -1,0 +1,13 @@
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/terraform.tfvars
+infra/.build/
+
+# Frontend (Vite/React)
+app/node_modules/
+app/dist/
+app/.vite/
+app/.env
+app/.env.*
