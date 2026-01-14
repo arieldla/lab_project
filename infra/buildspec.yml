@@ -11,13 +11,13 @@ phases:
   pre_build:
     commands:
       - echo "Preparing frontend build..."
-      - export SRC_DIR="${CODEBUILD_SRC_DIR:-$(pwd)}"
-      - export FRONTEND_APP_DIR="${FRONTEND_APP_DIR:-app}"
-      - export FRONTEND_BUILD_OUTPUT_DIR="${FRONTEND_BUILD_OUTPUT_DIR:-dist}"
-      - export FRONTEND_BUILD_COMMAND="${FRONTEND_BUILD_COMMAND:-npm ci && npm run build}"
+      - SRC_DIR="${CODEBUILD_SRC_DIR:-$(pwd)}"
+      - FRONTEND_APP_DIR="${FRONTEND_APP_DIR:-app}"
+      - FRONTEND_BUILD_OUTPUT_DIR="${FRONTEND_BUILD_OUTPUT_DIR:-dist}"
+      - FRONTEND_BUILD_COMMAND="${FRONTEND_BUILD_COMMAND:-npm ci && npm run build}"
       - echo "Source dir: $SRC_DIR"
-      - echo "App dir:    $FRONTEND_APP_DIR"
-      - echo "Build out:  $FRONTEND_BUILD_OUTPUT_DIR"
+      - echo "App dir: $FRONTEND_APP_DIR"
+      - echo "Build out: $FRONTEND_BUILD_OUTPUT_DIR"
       - cd "$SRC_DIR/$FRONTEND_APP_DIR"
       - echo "Working dir: $(pwd)"
 
@@ -29,17 +29,16 @@ phases:
   post_build:
     commands:
       - echo "Build complete. Syncing to S3..."
-      - export BUILD_OUTPUT_PATH="$SRC_DIR/$FRONTEND_APP_DIR/$FRONTEND_BUILD_OUTPUT_DIR"
+      - BUILD_OUTPUT_PATH="$SRC_DIR/$FRONTEND_APP_DIR/$FRONTEND_BUILD_OUTPUT_DIR"
       - echo "Syncing from: $BUILD_OUTPUT_PATH"
       - aws s3 sync "$BUILD_OUTPUT_PATH" "s3://$SITE_BUCKET_NAME" --delete
-      - |
-          if [ -n "${CLOUDFRONT_DISTRIBUTION_ID}" ] && [ "${CLOUDFRONT_DISTRIBUTION_ID}" != "none" ]; then
-            echo "Creating CloudFront invalidation..."
-            aws cloudfront create-invalidation --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" --paths "/*"
-          else
-            echo "CloudFront disabled; skipping invalidation."
-          fi
-
+      - >
+        if [ -n "$CLOUDFRONT_DISTRIBUTION_ID" ] && [ "$CLOUDFRONT_DISTRIBUTION_ID" != "none" ]; then
+          echo "Creating CloudFront invalidation...";
+          aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*";
+        else
+          echo "CloudFront disabled; skipping invalidation.";
+        fi
 artifacts:
   files:
     - "**/*"
