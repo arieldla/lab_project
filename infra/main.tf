@@ -482,10 +482,10 @@ resource "aws_codebuild_project" "frontend" {
   }
 
   environment {
-    compute_type    = "BUILD_GENERAL1_SMALL"
-    image           = "aws/codebuild/standard:7.0"
-    type            = "LINUX_CONTAINER"
-    privileged_mode = false
+    compute_type                = "BUILD_GENERAL1_SMALL"
+    image                       = "aws/codebuild/standard:7.0"
+    type                        = "LINUX_CONTAINER"
+    privileged_mode             = false
 
     environment_variable {
       name  = "SITE_BUCKET_NAME"
@@ -565,18 +565,16 @@ resource "aws_iam_role" "codepipeline" {
   tags               = local.tags
 }
 
-resource "aws_iam_role_policy_attachment" "codepipeline_basic" {
-  role       = aws_iam_role.codepipeline.name
-  policy_arn = "arn:aws:iam::aws:policy/AWSCodePipeline_FullAccess"
-}
+// NOTE: Avoid attaching broad managed policies (and some names vary).
+// Rely on the custom inline policies below for least-privilege.
 
 # Allow the pipeline service role to use the GitHub CodeStar Connection.
 # NOTE: We allow both arn:aws:codestar-connections:... and arn:aws:codeconnections:... because the console/UI and
 # the CodePipeline execution error messages can show either prefix.
 data "aws_iam_policy_document" "codepipeline_use_connection" {
   statement {
-    sid    = "UseCodeStarConnection"
-    effect = "Allow"
+    sid     = "UseCodeStarConnection"
+    effect  = "Allow"
     actions = [
       "codestar-connections:UseConnection",
       "codestar-connections:GetConnection"
