@@ -12,6 +12,12 @@ locals {
   ])
 }
 
+locals {
+  connection_arn_new    = var.codestar_connection_arn
+  connection_arn_legacy = replace(var.codestar_connection_arn, "arn:aws:codeconnections", "arn:aws:codestar-connections")
+}
+
+
 data "aws_caller_identity" "this" {}
 
 # -----------------------------
@@ -482,10 +488,10 @@ resource "aws_codebuild_project" "frontend" {
   }
 
   environment {
-    compute_type                = "BUILD_GENERAL1_SMALL"
-    image                       = "aws/codebuild/standard:7.0"
-    type                        = "LINUX_CONTAINER"
-    privileged_mode             = false
+    compute_type    = "BUILD_GENERAL1_SMALL"
+    image           = "aws/codebuild/standard:7.0"
+    type            = "LINUX_CONTAINER"
+    privileged_mode = false
 
     environment_variable {
       name  = "SITE_BUCKET_NAME"
@@ -573,15 +579,20 @@ resource "aws_iam_role" "codepipeline" {
 # the CodePipeline execution error messages can show either prefix.
 data "aws_iam_policy_document" "codepipeline_use_connection" {
   statement {
-    sid     = "UseCodeStarConnection"
-    effect  = "Allow"
+    sid = "UseConnections"
+
     actions = [
+      "codeconnections:UseConnection",
       "codestar-connections:UseConnection",
-      "codestar-connections:GetConnection"
     ]
-    resources = local.codestar_connection_arns
+
+    resources = [
+      local.connection_arn_new,
+      local.connection_arn_legacy,
+    ]
   }
 }
+
 
 resource "aws_iam_policy" "codepipeline_use_connection" {
   name   = "${var.name_prefix}-codepipeline-use-connection"
