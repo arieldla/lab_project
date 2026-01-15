@@ -1,22 +1,10 @@
 locals {
-  tags = merge(var.tags, {
-    NamePrefix = var.name_prefix
-  })
+  tags = merge(var.tags, { NamePrefix = var.name_prefix })
 
-  # AWS created two ARN service prefixes for Connections (historical: codestar-connections; newer: codeconnections).
-  # The CodePipeline Source action may reference either.
-  codestar_connection_arns = distinct([
-    var.codestar_connection_arn,
-    replace(var.codestar_connection_arn, "arn:aws:codeconnections:", "arn:aws:codestar-connections:"),
-    replace(var.codestar_connection_arn, "arn:aws:codestar-connections:", "arn:aws:codeconnections:")
-  ])
+  # Support both historical and newer ARN prefixes
+  connection_arn_codestar = replace(var.codestar_connection_arn, "arn:aws:codeconnections", "arn:aws:codestar-connections")
+  connection_arn_codeconn = replace(var.codestar_connection_arn, "arn:aws:codestar-connections", "arn:aws:codeconnections")
 }
-
-locals {
-  connection_arn_new    = var.codestar_connection_arn
-  connection_arn_legacy = replace(var.codestar_connection_arn, "arn:aws:codeconnections", "arn:aws:codestar-connections")
-}
-
 
 data "aws_caller_identity" "this" {}
 
@@ -49,13 +37,8 @@ resource "aws_s3_bucket_website_configuration" "site" {
   count  = var.enable_cloudfront ? 0 : 1
   bucket = aws_s3_bucket.site.id
 
-  index_document {
-    suffix = "index.html"
-  }
-
-  error_document {
-    key = "index.html"
-  }
+  index_document { suffix = "index.html" }
+  error_document { key = "index.html" }
 }
 
 resource "aws_s3_bucket_policy" "site_public_policy" {
@@ -64,15 +47,13 @@ resource "aws_s3_bucket_policy" "site_public_policy" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "PublicReadGetObject"
-        Effect    = "Allow"
-        Principal = "*"
-        Action    = ["s3:GetObject"]
-        Resource  = ["${aws_s3_bucket.site.arn}/*"]
-      }
-    ]
+    Statement = [{
+      Sid       = "PublicReadGetObject"
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = ["s3:GetObject"]
+      Resource  = ["${aws_s3_bucket.site.arn}/*"]
+    }]
   })
 }
 
@@ -98,16 +79,13 @@ resource "aws_cloudfront_origin_access_control" "oac" {
   signing_protocol                  = "sigv4"
 }
 
-# ACM certificate for custom domain (optional)
 resource "aws_acm_certificate" "site" {
   count             = (var.enable_cloudfront && var.enable_custom_domain) ? 1 : 0
   domain_name       = var.site_domain_name
   validation_method = "DNS"
   tags              = local.tags
 
-  lifecycle {
-    create_before_destroy = true
-  }
+  lifecycle { create_before_destroy = true }
 }
 
 resource "aws_route53_record" "site_cert_validation" {
@@ -132,8 +110,7 @@ resource "aws_cloudfront_distribution" "site" {
   is_ipv6_enabled     = true
   comment             = "${var.name_prefix} site"
   default_root_object = "index.html"
-
-  aliases = (var.enable_custom_domain ? [var.site_domain_name] : [])
+  aliases             = (var.enable_custom_domain ? [var.site_domain_name] : [])
 
   origin {
     domain_name              = aws_s3_bucket.site.bucket_regional_domain_name
@@ -150,18 +127,14 @@ resource "aws_cloudfront_distribution" "site" {
 
     forwarded_values {
       query_string = false
-      cookies {
-        forward = "none"
-      }
+      cookies { forward = "none" }
     }
   }
 
   price_class = "PriceClass_100"
 
   restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
+    geo_restriction { restriction_type = "none" }
   }
 
   viewer_certificate {
@@ -185,22 +158,18 @@ resource "aws_s3_bucket_policy" "site_oac_policy" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowCloudFrontServicePrincipalReadOnly"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudfront.amazonaws.com"
-        }
-        Action   = ["s3:GetObject"]
-        Resource = ["${aws_s3_bucket.site.arn}/*"]
-        Condition = {
-          StringEquals = {
-            "AWS:SourceArn" = aws_cloudfront_distribution.site[0].arn
-          }
+    Statement = [{
+      Sid       = "AllowCloudFrontServicePrincipalReadOnly"
+      Effect    = "Allow"
+      Principal = { Service = "cloudfront.amazonaws.com" }
+      Action    = ["s3:GetObject"]
+      Resource  = ["${aws_s3_bucket.site.arn}/*"]
+      Condition = {
+        StringEquals = {
+          "AWS:SourceArn" = aws_cloudfront_distribution.site[0].arn
         }
       }
-    ]
+    }]
   })
 }
 
@@ -259,11 +228,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
 
 data "aws_iam_policy_document" "lambda_ddb" {
   statement {
-    actions = [
-      "dynamodb:PutItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:Scan"
-    ]
+    actions   = ["dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Scan"]
     resources = [aws_dynamodb_table.notes.arn]
   }
 }
@@ -297,16 +262,14 @@ resource "aws_lambda_function" "api" {
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
 
   environment {
-    variables = {
-      DDB_TABLE = aws_dynamodb_table.notes.name
-    }
+    variables = { DDB_TABLE = aws_dynamodb_table.notes.name }
   }
 
   tags = local.tags
 }
 
 # -----------------------------
-# Cognito (Auth)
+# Cognito
 # -----------------------------
 resource "aws_cognito_user_pool" "this" {
   name = "${var.name_prefix}-user-pool"
@@ -347,16 +310,18 @@ resource "aws_cognito_user_pool_domain" "this" {
 }
 
 # -----------------------------
-# API Gateway HTTP API + JWT Authorizer
+# API Gateway HTTP API + JWT
 # -----------------------------
 resource "aws_apigatewayv2_api" "http" {
   name          = "${var.name_prefix}-http-api"
   protocol_type = "HTTP"
+
   cors_configuration {
     allow_headers = ["*"]
     allow_methods = ["GET", "POST", "DELETE", "OPTIONS"]
     allow_origins = ["*"]
   }
+
   tags = local.tags
 }
 
@@ -379,7 +344,6 @@ resource "aws_apigatewayv2_integration" "lambda" {
   payload_format_version = "2.0"
 }
 
-# Route all requests to Lambda (matches /notes and /notes/{proxy+})
 resource "aws_apigatewayv2_route" "notes" {
   api_id    = aws_apigatewayv2_api.http.id
   route_key = "ANY /notes"
@@ -414,7 +378,7 @@ resource "aws_lambda_permission" "apigw" {
 }
 
 # -----------------------------
-# CodeBuild + CodePipeline
+# CodeBuild
 # -----------------------------
 data "aws_iam_policy_document" "codebuild_assume" {
   statement {
@@ -439,12 +403,7 @@ resource "aws_iam_role_policy_attachment" "codebuild_basic" {
 
 data "aws_iam_policy_document" "codebuild_extra" {
   statement {
-    actions = [
-      "s3:PutObject",
-      "s3:DeleteObject",
-      "s3:ListBucket",
-      "s3:GetObject"
-    ]
+    actions = ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket", "s3:GetObject"]
     resources = [
       aws_s3_bucket.site.arn,
       "${aws_s3_bucket.site.arn}/*",
@@ -459,11 +418,7 @@ data "aws_iam_policy_document" "codebuild_extra" {
   }
 
   statement {
-    actions = [
-      "logs:CreateLogGroup",
-      "logs:CreateLogStream",
-      "logs:PutLogEvents"
-    ]
+    actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
     resources = ["*"]
   }
 }
@@ -471,6 +426,7 @@ data "aws_iam_policy_document" "codebuild_extra" {
 resource "aws_iam_policy" "codebuild_extra" {
   name   = "${var.name_prefix}-codebuild-extra"
   policy = data.aws_iam_policy_document.codebuild_extra.json
+  tags   = local.tags
 }
 
 resource "aws_iam_role_policy_attachment" "codebuild_extra" {
@@ -483,9 +439,7 @@ resource "aws_codebuild_project" "frontend" {
   description  = "Builds frontend and deploys to S3 (and invalidates CloudFront)"
   service_role = aws_iam_role.codebuild.arn
 
-  artifacts {
-    type = "CODEPIPELINE"
-  }
+  artifacts { type = "CODEPIPELINE" }
 
   environment {
     compute_type    = "BUILD_GENERAL1_SMALL"
@@ -497,43 +451,35 @@ resource "aws_codebuild_project" "frontend" {
       name  = "SITE_BUCKET_NAME"
       value = aws_s3_bucket.site.bucket
     }
-
     environment_variable {
       name  = "CLOUDFRONT_DISTRIBUTION_ID"
       value = var.enable_cloudfront ? aws_cloudfront_distribution.site[0].id : "none"
     }
-
     environment_variable {
       name  = "FRONTEND_APP_DIR"
       value = var.frontend_app_dir
     }
-
     environment_variable {
       name  = "FRONTEND_BUILD_COMMAND"
       value = var.frontend_build_command
     }
-
     environment_variable {
       name  = "FRONTEND_BUILD_OUTPUT_DIR"
       value = var.frontend_build_output_dir
     }
 
-    # Optional: pass backend values to the build (useful if your build injects .env files)
     environment_variable {
       name  = "API_BASE_URL"
       value = aws_apigatewayv2_api.http.api_endpoint
     }
-
     environment_variable {
       name  = "COGNITO_USER_POOL_ID"
       value = aws_cognito_user_pool.this.id
     }
-
     environment_variable {
       name  = "COGNITO_USER_POOL_CLIENT_ID"
       value = aws_cognito_user_pool_client.this.id
     }
-
     environment_variable {
       name  = "AWS_REGION"
       value = var.aws_region
@@ -555,6 +501,9 @@ resource "aws_codebuild_project" "frontend" {
   tags = local.tags
 }
 
+# -----------------------------
+# CodePipeline IAM
+# -----------------------------
 data "aws_iam_policy_document" "codepipeline_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -571,28 +520,20 @@ resource "aws_iam_role" "codepipeline" {
   tags               = local.tags
 }
 
-// NOTE: Avoid attaching broad managed policies (and some names vary).
-// Rely on the custom inline policies below for least-privilege.
-
-# Allow the pipeline service role to use the GitHub CodeStar Connection.
-# NOTE: We allow both arn:aws:codestar-connections:... and arn:aws:codeconnections:... because the console/UI and
-# the CodePipeline execution error messages can show either prefix.
+# Allow CodePipeline to use the GitHub connection (both ARN styles)
 data "aws_iam_policy_document" "codepipeline_use_connection" {
   statement {
     sid = "UseConnections"
-
     actions = [
       "codeconnections:UseConnection",
       "codestar-connections:UseConnection",
     ]
-
     resources = [
-      local.connection_arn_new,
-      local.connection_arn_legacy,
+      local.connection_arn_codestar,
+      local.connection_arn_codeconn,
     ]
   }
 }
-
 
 resource "aws_iam_policy" "codepipeline_use_connection" {
   name   = "${var.name_prefix}-codepipeline-use-connection"
@@ -605,9 +546,73 @@ resource "aws_iam_role_policy_attachment" "codepipeline_use_connection" {
   policy_arn = aws_iam_policy.codepipeline_use_connection.arn
 }
 
+# Allow CodePipeline to read/write artifacts in the artifacts bucket
+data "aws_iam_policy_document" "codepipeline_s3_artifacts" {
+  statement {
+    sid       = "ArtifactsBucketAccess"
+    actions   = ["s3:GetBucketLocation", "s3:ListBucket"]
+    resources = [aws_s3_bucket.artifacts.arn]
+  }
+
+  statement {
+    sid = "ArtifactsObjectAccess"
+    actions = [
+      "s3:GetObject",
+      "s3:GetObjectVersion",
+      "s3:PutObject",
+      "s3:DeleteObject"
+    ]
+    resources = ["${aws_s3_bucket.artifacts.arn}/*"]
+  }
+}
+
+resource "aws_iam_policy" "codepipeline_s3_artifacts" {
+  name   = "${var.name_prefix}-codepipeline-artifacts-s3"
+  policy = data.aws_iam_policy_document.codepipeline_s3_artifacts.json
+  tags   = local.tags
+}
+
+resource "aws_iam_role_policy_attachment" "codepipeline_s3_artifacts" {
+  role       = aws_iam_role.codepipeline.name
+  policy_arn = aws_iam_policy.codepipeline_s3_artifacts.arn
+}
+
+# Allow CodePipeline to start CodeBuild builds + read status
+data "aws_iam_policy_document" "codepipeline_codebuild" {
+  statement {
+    sid = "CodeBuildStartAndRead"
+    actions = [
+      "codebuild:StartBuild",
+      "codebuild:BatchGetBuilds",
+      "codebuild:BatchGetProjects"
+    ]
+    resources = [aws_codebuild_project.frontend.arn]
+  }
+}
+
+resource "aws_iam_policy" "codepipeline_codebuild" {
+  name   = "${var.name_prefix}-codepipeline-codebuild"
+  policy = data.aws_iam_policy_document.codepipeline_codebuild.json
+  tags   = local.tags
+}
+
+resource "aws_iam_role_policy_attachment" "codepipeline_codebuild" {
+  role       = aws_iam_role.codepipeline.name
+  policy_arn = aws_iam_policy.codepipeline_codebuild.arn
+}
+
+# -----------------------------
+# CodePipeline
+# -----------------------------
 resource "aws_codepipeline" "this" {
   name     = "${var.name_prefix}-pipeline"
   role_arn = aws_iam_role.codepipeline.arn
+
+  depends_on = [
+    aws_iam_role_policy_attachment.codepipeline_use_connection,
+    aws_iam_role_policy_attachment.codepipeline_s3_artifacts,
+    aws_iam_role_policy_attachment.codepipeline_codebuild,
+  ]
 
   artifact_store {
     location = aws_s3_bucket.artifacts.bucket
@@ -642,9 +647,9 @@ resource "aws_codepipeline" "this" {
       category         = "Build"
       owner            = "AWS"
       provider         = "CodeBuild"
+      version          = "1"
       input_artifacts  = ["source_output"]
       output_artifacts = ["build_output"]
-      version          = "1"
 
       configuration = {
         ProjectName = aws_codebuild_project.frontend.name

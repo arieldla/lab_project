@@ -13,7 +13,7 @@ variable "name_prefix" {
 variable "tags" {
   description = "Tags for all resources."
   type        = map(string)
-  default     = {
+  default = {
     Project = "lab"
     Owner   = "Ariel"
     System  = "DLAGROUP"
@@ -89,7 +89,7 @@ variable "site_domain_name" {
 }
 
 # -----------------------------
-# Backend (7-service style)
+# Backend
 # -----------------------------
 variable "dynamodb_table_name" {
   description = "DynamoDB table for notes/items."
