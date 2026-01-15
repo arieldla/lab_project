@@ -10,33 +10,34 @@ phases:
 
   pre_build:
     commands:
-      - echo "Preparing frontend build..."
-      - export SRC_DIR="${CODEBUILD_SRC_DIR:-$(pwd)}"
-      - export FRONTEND_APP_DIR="${FRONTEND_APP_DIR:-app}"
-      - export FRONTEND_BUILD_OUTPUT_DIR="${FRONTEND_BUILD_OUTPUT_DIR:-dist}"
-      - echo "Source dir: ${SRC_DIR}"
-      - echo "App dir: ${FRONTEND_APP_DIR}"
-      - echo "Build out: ${FRONTEND_BUILD_OUTPUT_DIR}"
+      - echo Preparing frontend build
+      - SRC_DIR="${CODEBUILD_SRC_DIR}"
+      - FRONTEND_APP_DIR="${FRONTEND_APP_DIR:-app}"
+      - FRONTEND_BUILD_OUTPUT_DIR="${FRONTEND_BUILD_OUTPUT_DIR:-dist}"
+      - FRONTEND_BUILD_COMMAND="${FRONTEND_BUILD_COMMAND:-npm ci && npm run build}"
+      - echo SRC_DIR=${SRC_DIR}
+      - echo FRONTEND_APP_DIR=${FRONTEND_APP_DIR}
+      - echo FRONTEND_BUILD_OUTPUT_DIR=${FRONTEND_BUILD_OUTPUT_DIR}
       - cd "${SRC_DIR}/${FRONTEND_APP_DIR}"
-      - echo "Working dir: $(pwd)"
+      - pwd
 
   build:
     commands:
-      - echo "Running build..."
-      - 'bash -lc "${FRONTEND_BUILD_COMMAND:-npm ci && npm run build}"'
+      - echo Running frontend build
+      - bash -lc "${FRONTEND_BUILD_COMMAND}"
 
   post_build:
     commands:
-      - echo "Build complete. Syncing to S3..."
-      - export BUILD_OUTPUT_PATH="${SRC_DIR}/${FRONTEND_APP_DIR}/${FRONTEND_BUILD_OUTPUT_DIR}"
-      - echo "Syncing from: ${BUILD_OUTPUT_PATH}"
+      - echo Syncing build output to S3
+      - BUILD_OUTPUT_PATH="${SRC_DIR}/${FRONTEND_APP_DIR}/${FRONTEND_BUILD_OUTPUT_DIR}"
+      - echo BUILD_OUTPUT_PATH=${BUILD_OUTPUT_PATH}
       - aws s3 sync "${BUILD_OUTPUT_PATH}" "s3://${SITE_BUCKET_NAME}" --delete
       - |
         if [ -n "${CLOUDFRONT_DISTRIBUTION_ID}" ] && [ "${CLOUDFRONT_DISTRIBUTION_ID}" != "none" ]; then
-          echo "Creating CloudFront invalidation..."
+          echo Creating CloudFront invalidation
           aws cloudfront create-invalidation --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" --paths "/*"
         else
-          echo "CloudFront disabled; skipping invalidation."
+          echo CloudFront disabled
         fi
 
 artifacts:

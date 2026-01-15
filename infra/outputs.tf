@@ -7,11 +7,7 @@ output "artifacts_bucket_name" {
 }
 
 output "site_url" {
-  value = (
-    var.enable_cloudfront
-    ? "https://${aws_cloudfront_distribution.site[0].domain_name}"
-    : "http://${aws_s3_bucket_website_configuration.site[0].website_endpoint}"
-  )
+  value = var.enable_cloudfront ? "https://${aws_cloudfront_distribution.site[0].domain_name}" : "http://${aws_s3_bucket_website_configuration.site[0].website_endpoint}"
 }
 
 output "custom_domain_url" {
