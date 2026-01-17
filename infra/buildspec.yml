@@ -26,19 +26,33 @@ phases:
       - echo Running frontend build
       - bash -lc "${FRONTEND_BUILD_COMMAND}"
 
-  post_build:
-    commands:
-      - echo Syncing build output to S3
-      - BUILD_OUTPUT_PATH="${SRC_DIR}/${FRONTEND_APP_DIR}/${FRONTEND_BUILD_OUTPUT_DIR}"
-      - echo BUILD_OUTPUT_PATH=${BUILD_OUTPUT_PATH}
-      - aws s3 sync "${BUILD_OUTPUT_PATH}" "s3://${SITE_BUCKET_NAME}" --delete
-      - |
-        if [ -n "${CLOUDFRONT_DISTRIBUTION_ID}" ] && [ "${CLOUDFRONT_DISTRIBUTION_ID}" != "none" ]; then
-          echo Creating CloudFront invalidation
-          aws cloudfront create-invalidation --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" --paths "/*"
+post_build:
+  commands:
+    - echo "Build complete. Syncing to S3..."
+    - export BUILD_OUTPUT_PATH="$SRC_DIR/$FRONTEND_APP_DIR/$FRONTEND_BUILD_OUTPUT_DIR"
+    - |
+      if [ ! -d "$BUILD_OUTPUT_PATH" ]; then
+        echo "Expected output dir not found: $BUILD_OUTPUT_PATH"
+        echo "Trying common fallbacks..."
+        if [ -d "$SRC_DIR/$FRONTEND_APP_DIR/dist" ]; then
+          BUILD_OUTPUT_PATH="$SRC_DIR/$FRONTEND_APP_DIR/dist"
+        elif [ -d "$SRC_DIR/$FRONTEND_APP_DIR/build" ]; then
+          BUILD_OUTPUT_PATH="$SRC_DIR/$FRONTEND_APP_DIR/build"
         else
-          echo CloudFront disabled
+          echo "No dist/ or build/ directory found. Listing contents:"
+          ls -la "$SRC_DIR/$FRONTEND_APP_DIR"
+          exit 1
         fi
+      fi
+    - echo "Syncing from: $BUILD_OUTPUT_PATH"
+    - aws s3 sync "$BUILD_OUTPUT_PATH" "s3://$SITE_BUCKET_NAME" --delete
+    - |
+      if [ -n "${CLOUDFRONT_DISTRIBUTION_ID}" ] && [ "${CLOUDFRONT_DISTRIBUTION_ID}" != "none" ]; then
+        echo "Creating CloudFront invalidation..."
+        aws cloudfront create-invalidation --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" --paths "/*"
+      else
+        echo "CloudFront disabled; skipping invalidation."
+      fi
 
 artifacts:
   files:

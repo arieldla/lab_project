@@ -3,11 +3,20 @@ import os
 import time
 import uuid
 import boto3
-from boto3.dynamodb.conditions import Key
+from decimal import Decimal
 
 DDB_TABLE = os.environ["DDB_TABLE"]
 ddb = boto3.resource("dynamodb")
 table = ddb.Table(DDB_TABLE)
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            # DynamoDB returns numbers as Decimal
+            if obj % 1 == 0:
+                return int(obj)
+            return float(obj)
+        return super().default(obj)
 
 def _response(status_code: int, body: dict):
     return {
@@ -18,7 +27,7 @@ def _response(status_code: int, body: dict):
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
         },
-        "body": json.dumps(body),
+        "body": json.dumps(body, cls=DecimalEncoder),
     }
 
 def handler(event, context):
@@ -28,17 +37,11 @@ def handler(event, context):
     if method == "OPTIONS":
         return _response(200, {"ok": True})
 
-    # Simple routes:
-    # GET  /notes         -> list
-    # POST /notes         -> create
-    # DELETE /notes/{id}  -> delete
     now = int(time.time())
 
     if path == "/notes" and method == "GET":
-        # list the most recent 25
         resp = table.scan(Limit=25)
         items = resp.get("Items", [])
-        # sort client-side for simplicity
         items.sort(key=lambda x: x.get("createdAt", 0), reverse=True)
         return _response(200, {"items": items})
 
@@ -62,7 +65,6 @@ def handler(event, context):
         table.put_item(Item=item)
         return _response(201, item)
 
-    # DELETE /notes/{id}
     if path.startswith("/notes/") and method == "DELETE":
         note_id = path.split("/notes/")[1]
         if not note_id:
